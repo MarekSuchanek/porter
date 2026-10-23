@@ -278,6 +278,7 @@ mod tests {
         assert_eq!(sub.location, path(&dir.path().join("sub")));
 
         let crumbs: Vec<_> = listing.crumbs.iter().map(|c| c.name.as_str()).collect();
+        #[cfg(unix)]
         assert_eq!(crumbs.first(), Some(&"/"));
         assert_eq!(listing.crumbs.last().unwrap().location, listing.location);
         assert!(listing.capabilities.write);
@@ -311,6 +312,7 @@ mod tests {
     #[test]
     fn opening_is_local_only() {
         let registry = Registry::default();
+        #[cfg(unix)]
         assert_eq!(local_path(&registry, "/tmp").unwrap(), "/tmp");
         assert!(local_path(&registry, "sftp://host/x").is_err());
     }

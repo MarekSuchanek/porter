@@ -12,6 +12,7 @@
   import { app, prefs, save } from './lib/state.svelte';
   import { commands, isMac, keysFor, matches } from './lib/commands';
   import { api, inTauri } from './lib/api';
+  import { checkForUpdates } from './lib/updates';
 
   // Shortcuts that also work while typing in a text field.
   const WHILE_TYPING = new Set([
@@ -36,6 +37,8 @@
 
   onMount(() => {
     void app.init();
+    // Release builds look for updates shortly after start; dev builds never do.
+    if (inTauri && import.meta.env.PROD) setTimeout(() => void checkForUpdates(false), 5000);
     void api.onMenuSelectAll(() => {
       const field = document.activeElement;
       if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.select();

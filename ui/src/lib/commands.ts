@@ -1,6 +1,7 @@
 // Every action with a shortcut, shared by the keyboard handler and the ⌘K palette.
 
 import { app, prefs } from './state.svelte';
+import { checkForUpdates, showVersion } from './updates';
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -54,6 +55,8 @@ export const commands: Command[] = [
   { id: 'select-all', title: 'Select all', group: 'Edit', keys: [{ key: 'a', mod: true }], run: () => app.pane?.selectAll() },
   { id: 'copy-other', title: 'Copy to other pane', group: 'File', keys: [{ key: 'F5' }], when: () => isDual() && hasTargets(), run: () => void app.transfer('copy', app.pane.targets(), app.tab.other!.location) },
   { id: 'move-other', title: 'Move to other pane', group: 'File', keys: [{ key: 'F6' }], when: () => isDual() && hasTargets(), run: () => void app.transfer('move', app.pane.targets(), app.tab.other!.location) },
+  { id: 'check-updates', title: 'Check for updates…', group: 'General', run: () => void checkForUpdates(true) },
+  { id: 'about', title: 'About Porter', group: 'General', run: () => void showVersion() },
   { id: 'clear-transfers', title: 'Clear finished transfers', group: 'View', when: () => app.jobs.some((j) => j.summary), run: () => app.clearFinishedJobs() },
 ];
 

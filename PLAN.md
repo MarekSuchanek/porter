@@ -154,7 +154,15 @@ porter remote list|remove|test
    root), NFSv3 only (no NFSv4, no Kerberos); ad-hoc `smb://`/`nfs://` URLs aren't
    supported (save a remote); SMB permissions (ACLs) aren't exposed.
 7. **M7 Polish & release** — installers (dmg, msi, AppImage/deb), auto-update,
-   signing/notarization, docs.
+   signing/notarization, docs. ✅ Tag-driven GitHub Actions release into a draft:
+   universal macOS app/dmg, Windows MSI + NSIS, Linux deb/rpm/AppImage, CLI archives
+   for 5 targets with checksums, and a signed `latest.json` update feed. Signing is
+   optional per platform (secrets), notarization via Tauri. In-app updater with
+   ⌘K → "Check for updates…". CI on Linux/macOS/Windows. Version lives in
+   `Cargo.toml` (`scripts/bump-version.sh`). See [docs/RELEASING.md](docs/RELEASING.md).
+   Not yet verified: the workflows themselves (need the GitHub repo and secrets),
+   Windows/Linux builds (no local toolchains), signing (no certificates yet).
+   SFTP is Unix-only for now.
 
 ### Later ideas
 

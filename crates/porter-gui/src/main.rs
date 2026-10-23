@@ -127,6 +127,8 @@ fn main() {
     let builder = builder.menu(menu::build).on_menu_event(menu::on_event);
     builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState {
             registry: Arc::new(registry),
             jobs: Arc::default(),

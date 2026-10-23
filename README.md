@@ -3,10 +3,18 @@
 A cross-platform manager for local and remote file systems (SFTP, S3, FTP, SMB, NFS, …)
 with a CLI and a desktop GUI. See [PLAN.md](PLAN.md) for the architecture and roadmap.
 
+## Install
+
+Download the app (macOS `.dmg`, Windows `.msi`/`.exe`, Linux `.AppImage`/`.deb`/`.rpm`)
+or the `porter` CLI archive for your platform from the
+[releases page](https://github.com/MarekSuchanek/porter/releases). The app updates
+itself; see [docs/RELEASING.md](docs/RELEASING.md) for how releases are made.
+
 ## Build
 
 ```bash
-cargo build --release
+cargo build --release          # the CLI: target/release/porter
+npm ci && npm run tauri build  # the desktop app installers for this OS
 ```
 
 ## Usage

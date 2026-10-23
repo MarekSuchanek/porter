@@ -16,7 +16,9 @@ use porter_core::{
 };
 use tokio_util::compat::{FuturesAsyncReadCompatExt, FuturesAsyncWriteCompatExt};
 
-use crate::config::{Backend, KnownHosts, Remote};
+#[cfg(unix)]
+use crate::config::KnownHosts;
+use crate::config::{Backend, Remote};
 
 /// Chunk size for transfers; S3 multipart uploads need at least 5 MiB parts.
 const CHUNK_SIZE: usize = 8 << 20;
@@ -47,6 +49,14 @@ impl OpendalProvider {
     pub fn from_remote(name: &str, remote: &Remote, secret: Option<&str>) -> Result<Self> {
         let root = remote.root.as_deref().unwrap_or("/");
         let op = match &remote.backend {
+            #[cfg(not(unix))]
+            Backend::Sftp { .. } => {
+                return Err(Error::backend(
+                    name,
+                    "SFTP is not supported on Windows yet (it needs the system ssh client)",
+                ));
+            }
+            #[cfg(unix)]
             Backend::Sftp {
                 host,
                 port,
@@ -427,12 +437,14 @@ fn map_err(path: &str, e: opendal::Error) -> Error {
 }
 
 /// `ssh://[user@]host[:port]`, the endpoint format `openssh` expects.
+#[cfg(unix)]
 fn ssh_endpoint(host: &str, port: Option<u16>, user: Option<&str>) -> String {
     let user = user.map(|u| format!("{u}@")).unwrap_or_default();
     let port = port.map(|p| format!(":{p}")).unwrap_or_default();
     format!("ssh://{user}{host}{port}")
 }
 
+#[cfg(unix)]
 fn expand_home(path: &str) -> String {
     match (path.strip_prefix("~/"), directories::BaseDirs::new()) {
         (Some(rest), Some(dirs)) => dirs.home_dir().join(rest).display().to_string(),
@@ -482,6 +494,7 @@ mod tests {
         assert_eq!(dir_path("/"), "/");
         assert_eq!(name_of("/a/b/"), "b");
         assert_eq!(name_of("/"), "/");
+        #[cfg(unix)]
         assert_eq!(ssh_endpoint("h", Some(22), Some("me")), "ssh://me@h:22");
     }
 
@@ -537,11 +550,16 @@ mod tests {
 
     #[test]
     fn urls_build_providers() {
-        for url in [
-            "sftp://me@host:2222/x",
-            "ftp://host/x",
-            "ftps://u@host:990/",
-        ] {
+        let urls: &[&str] = if cfg!(unix) {
+            &[
+                "sftp://me@host:2222/x",
+                "ftp://host/x",
+                "ftps://u@host:990/",
+            ]
+        } else {
+            &["ftp://host/x", "ftps://u@host:990/"]
+        };
+        for &url in urls {
             let loc = Location::parse(url).unwrap();
             let provider = OpendalProvider::from_url(&loc).unwrap();
             assert_eq!(provider.scheme(), loc.scheme, "{url}");
