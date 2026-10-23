@@ -277,9 +277,13 @@ mod tests {
             .unwrap();
         assert_eq!(sub.location, path(&dir.path().join("sub")));
 
-        let crumbs: Vec<_> = listing.crumbs.iter().map(|c| c.name.as_str()).collect();
-        #[cfg(unix)]
-        assert_eq!(crumbs.first(), Some(&"/"));
+        // Breadcrumbs start at the file system root: `/`, or a drive such as `C:\`.
+        let root = &listing.crumbs[0];
+        assert!(
+            std::path::Path::new(&root.location).parent().is_none(),
+            "{root:?}"
+        );
+        assert_eq!(root.name, root.location);
         assert_eq!(listing.crumbs.last().unwrap().location, listing.location);
         assert!(listing.capabilities.write);
 
