@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use porter_core::{Error, ModeSpec, Target};
-use porter_jobs::{Conflict, CopyOptions, DeleteOptions, Job, chmod, copy, delete, mkdir, move_to};
+use porter_core::{Error, Target};
+use porter_jobs::{Conflict, CopyOptions, DeleteOptions, Job, copy, delete, mkdir, move_to};
 
 fn target(path: &Path) -> Target {
     porter_backends::target(path.to_str().unwrap()).unwrap()
@@ -290,6 +290,8 @@ async fn deletes_with_safety_checks() {
 #[cfg(unix)]
 #[tokio::test]
 async fn chmod_recursive_symbolic() {
+    use porter_core::ModeSpec;
+    use porter_jobs::chmod;
     use std::os::unix::fs::PermissionsExt;
 
     let dir = fixture();
