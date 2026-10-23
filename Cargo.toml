@@ -10,3 +10,4 @@ rust-version = "1.85"
 [workspace.dependencies]
 porter-core = { path = "crates/porter-core" }
 porter-backends = { path = "crates/porter-backends" }
+porter-jobs = { path = "crates/porter-jobs" }

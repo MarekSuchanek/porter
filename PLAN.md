@@ -35,7 +35,7 @@ porter/
 ├─ crates/
 │  ├─ porter-core/      # Provider trait, Entry/FsInfo/Capabilities, Location (URIs), errors
 │  ├─ porter-backends/  # local now; opendal-backed, smb, nfs later; provider registry
-│  ├─ porter-jobs/      # (M2) job engine: copy/move/delete/search with progress events
+│  ├─ porter-jobs/      # job engine: copy/move/delete/chmod with progress + cancellation
 │  ├─ porter-cli/       # `porter` binary
 │  └─ porter-gui/       # (M4) Tauri app: src-tauri + Svelte UI
 ```
@@ -53,18 +53,23 @@ porter/
 - **Entry** — normalized metadata: kind, size, timestamps, permissions (POSIX mode,
   read-only flag, uid/gid), hidden flag, symlink target. Backend-specific extras go in
   a later `extra` map (S3 storage class, ETag, SMB attributes…).
-- **Jobs** (M2) — long-running operations run in the job engine: a queue with bounded
-  concurrency, chunked/parallel transfers, resume, checksum verification, conflict
-  policy (skip / overwrite / rename / newer-wins), pause/cancel. Both CLI and GUI
-  subscribe to the same progress event stream.
+- **Target** — a `Location` plus the `Provider` serving it; what operations take.
+- **Jobs** — long-running operations take a `Job` handle: lock-free progress counters
+  (scanned, files, bytes, current item) that front ends poll, plus a cancellation
+  token. Operations plan first (walk sources, compute totals), then execute with
+  bounded concurrency in 1 MiB chunks. Per-item failures are collected in a `Report`
+  instead of aborting. Conflict policy: fail / skip / overwrite / rename (`name (1).ext`)
+  / newer. Moves rename within a backend and fall back to copy + delete (source is
+  removed only if every item arrived). Cancelled or failed transfers remove their
+  partial file.
 
 ### Provider trait evolution
 
 | Milestone | Methods |
 |---|---|
-| M1 | `stat`, `list`, `fs_info`, `capabilities` |
-| M2 | `read`/`write` (async streams), `mkdir`, `delete`, `rename`, `set_permissions`, `set_owner`, `copy` (server-side, optional) |
-| M5 | `search` (optional native search; default falls back to walking) |
+| M1 ✅ | `stat`, `list`, `fs_info`, `capabilities` |
+| M2 ✅ | `stat_follow`, `read`/`write` (tokio `AsyncRead`/`AsyncWrite`), `mkdir`, `delete`, `rename`, `set_permissions`, `set_modified`, `symlink`, path helpers (`join`, `parent`, `file_name`) — all but the M1 methods default to `Unsupported` |
+| later | `set_owner`, server-side `copy`, `search` (optional native search; default walks) |
 
 ## GUI concept
 
@@ -84,12 +89,12 @@ porter/
 porter ls [LOCATION] [-l] [-a] [--sort name|size|modified] [-r] [--json]
 porter stat LOCATION [--json]
 porter df [LOCATION] [--json]
-porter cp SRC… DST [-r] [--jobs N] [--on-conflict skip|overwrite|rename|newer]   # M2
-porter mv SRC… DST                                                                 # M2
-porter rm LOCATION… [-r] [--dry-run]                                                # M2
-porter mkdir LOCATION [-p]                                                          # M2
-porter chmod MODE LOCATION… [-R]                                                    # M2
-porter chown OWNER[:GROUP] LOCATION… [-R]                                           # M2
+porter cp SRC… DST [-r] [--jobs N] [--on-conflict fail|skip|overwrite|rename|newer] [--no-preserve]
+porter mv SRC… DST [--jobs N] [--on-conflict …]
+porter rm LOCATION… [-r] [-n/--dry-run]
+porter mkdir LOCATION… [-p]
+porter chmod MODE LOCATION… [-R]                     # MODE: 755 or u+x,go-w,a=rX
+porter chown OWNER[:GROUP] LOCATION… [-R]                                           # later
 porter find LOCATION [--name GLOB] [--regex RE] [--size +10M] [--newer 7d] [--type f|d]  # M5
 porter remote add|list|remove|test                                                  # M3
 ```
@@ -97,9 +102,12 @@ porter remote add|list|remove|test                                              
 ## Milestones
 
 1. **M1 Foundation** — workspace, core types, Location parsing, local provider,
-   CLI `ls`, `stat`, `df`. ✅ scaffolded
-2. **M2 Operations** — job engine; copy/move/delete/mkdir/rename/chmod/chown on local;
-   CLI with progress bars; conflict policies; dry-run.
+   CLI `ls`, `stat`, `df`. ✅
+2. **M2 Operations** — job engine; copy/move/delete/mkdir/chmod on local; CLI with
+   progress bars and Ctrl+C cancellation; conflict policies; dry-run. ✅
+   Deferred: chown/owner names, pause/resume, checksum verification, local fast
+   paths (APFS `clonefile`, Linux `copy_file_range`/reflinks), trash instead of
+   delete, Windows symlinks, non-UTF-8 file names.
 3. **M3 Remotes I** — OpenDAL-backed providers (SFTP, S3, FTP, WebDAV); connection
    profiles in config; credentials in the OS keychain; `porter remote …`.
 4. **M4 GUI v1** — Tauri + Svelte app: browser with tabs, sidebar, inspector,

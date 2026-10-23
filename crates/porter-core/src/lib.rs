@@ -3,9 +3,13 @@
 mod entry;
 mod error;
 mod location;
+mod mode;
 mod provider;
+mod target;
 
 pub use entry::{Entry, EntryKind, FsInfo, Permissions};
 pub use error::{Error, Result};
 pub use location::Location;
-pub use provider::{Capabilities, EntryStream, Provider};
+pub use mode::{Clause, ModeSpec};
+pub use provider::{Capabilities, EntryStream, Provider, Reader, Writer};
+pub use target::Target;

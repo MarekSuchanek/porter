@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use porter_core::{
     Capabilities, Entry, EntryKind, EntryStream, Error, FsInfo, Location, Permissions, Provider,
-    Result,
+    Reader, Result, Writer,
 };
 use sysinfo::Disks;
 use tokio::sync::mpsc;
@@ -29,9 +29,32 @@ impl Provider for LocalProvider {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             list: true,
+            read: true,
+            write: true,
+            delete: true,
+            rename: true,
+            mkdir: true,
+            set_permissions: true,
+            set_owner: false,
+            set_modified: true,
+            symlinks: cfg!(unix),
+            server_side_copy: false,
             fs_info: true,
-            ..Default::default()
         }
+    }
+
+    fn join(&self, dir: &str, name: &str) -> String {
+        Path::new(dir).join(name).display().to_string()
+    }
+
+    fn parent(&self, path: &str) -> Option<String> {
+        Path::new(path).parent().map(|p| p.display().to_string())
+    }
+
+    fn file_name(&self, path: &str) -> Option<String> {
+        Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
     }
 
     async fn stat(&self, path: &str) -> Result<Entry> {
@@ -39,6 +62,16 @@ impl Provider for LocalProvider {
         blocking(move || {
             let abs = absolute(&path)?;
             let meta = fs::symlink_metadata(&abs).map_err(|e| Error::io(&path, e))?;
+            Ok(to_entry(&abs, &meta))
+        })
+        .await
+    }
+
+    async fn stat_follow(&self, path: &str) -> Result<Entry> {
+        let path = path.to_owned();
+        blocking(move || {
+            let abs = absolute(&path)?;
+            let meta = fs::metadata(&abs).map_err(|e| Error::io(&path, e))?;
             Ok(to_entry(&abs, &meta))
         })
         .await
@@ -82,6 +115,92 @@ impl Provider for LocalProvider {
                 .max_by_key(|d| d.mount_point().components().count())
                 .map(to_fs_info)
                 .ok_or_else(|| Error::NotFound(format!("{path}: no mounted file system")))
+        })
+        .await
+    }
+
+    async fn read(&self, path: &str) -> Result<Reader> {
+        let file = tokio::fs::File::open(path)
+            .await
+            .map_err(|e| Error::io(path, e))?;
+        Ok(Box::new(file))
+    }
+
+    async fn write(&self, path: &str, overwrite: bool) -> Result<Writer> {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true);
+        if overwrite {
+            options.create(true).truncate(true);
+        } else {
+            options.create_new(true);
+        }
+        let file = options.open(path).await.map_err(|e| Error::io(path, e))?;
+        Ok(Box::new(file))
+    }
+
+    async fn mkdir(&self, path: &str) -> Result<()> {
+        let path = path.to_owned();
+        blocking(move || fs::create_dir(&path).map_err(|e| Error::io(&path, e))).await
+    }
+
+    async fn delete(&self, path: &str) -> Result<()> {
+        let path = path.to_owned();
+        blocking(move || {
+            let meta = fs::symlink_metadata(&path).map_err(|e| Error::io(&path, e))?;
+            let result = if meta.is_dir() {
+                fs::remove_dir(&path)
+            } else {
+                fs::remove_file(&path)
+            };
+            result.map_err(|e| Error::io(&path, e))
+        })
+        .await
+    }
+
+    async fn rename(&self, from: &str, to: &str) -> Result<()> {
+        let (from, to) = (from.to_owned(), to.to_owned());
+        blocking(move || fs::rename(&from, &to).map_err(|e| Error::io(&from, e))).await
+    }
+
+    async fn set_permissions(&self, path: &str, mode: u32) -> Result<()> {
+        let path = path.to_owned();
+        blocking(move || {
+            #[cfg(unix)]
+            let perms = {
+                use std::os::unix::fs::PermissionsExt;
+                fs::Permissions::from_mode(mode)
+            };
+            // Without POSIX modes the only portable bit is read-only.
+            #[cfg(not(unix))]
+            let perms = {
+                let mut perms = fs::metadata(&path)
+                    .map_err(|e| Error::io(&path, e))?
+                    .permissions();
+                perms.set_readonly(mode & 0o222 == 0);
+                perms
+            };
+            fs::set_permissions(&path, perms).map_err(|e| Error::io(&path, e))
+        })
+        .await
+    }
+
+    async fn set_modified(&self, path: &str, time: DateTime<Utc>) -> Result<()> {
+        let path = path.to_owned();
+        blocking(move || {
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|f| f.set_modified(time.into()))
+                .map_err(|e| Error::io(&path, e))
+        })
+        .await
+    }
+
+    #[cfg(unix)]
+    async fn symlink(&self, target: &str, path: &str) -> Result<()> {
+        let (target, path) = (target.to_owned(), path.to_owned());
+        blocking(move || {
+            std::os::unix::fs::symlink(&target, &path).map_err(|e| Error::io(&path, e))
         })
         .await
     }
@@ -263,6 +382,60 @@ mod tests {
         let entry = LocalProvider.stat(&path_str(&link)).await.unwrap();
         assert_eq!(entry.kind, EntryKind::Symlink);
         assert_eq!(entry.symlink_target.as_deref(), Some("a.txt"));
+    }
+
+    #[tokio::test]
+    async fn write_read_rename_delete() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let dir = fixture();
+        let file = path_str(&dir.path().join("new.txt"));
+        let mut w = LocalProvider.write(&file, false).await.unwrap();
+        w.write_all(b"data").await.unwrap();
+        w.shutdown().await.unwrap();
+        assert!(matches!(
+            LocalProvider.write(&file, false).await,
+            Err(Error::AlreadyExists(_))
+        ));
+
+        let moved = path_str(&dir.path().join("sub/moved.txt"));
+        LocalProvider.rename(&file, &moved).await.unwrap();
+        let mut content = String::new();
+        LocalProvider
+            .read(&moved)
+            .await
+            .unwrap()
+            .read_to_string(&mut content)
+            .await
+            .unwrap();
+        assert_eq!(content, "data");
+
+        let sub = path_str(&dir.path().join("sub"));
+        assert!(
+            LocalProvider.delete(&sub).await.is_err(),
+            "sub is not empty"
+        );
+        LocalProvider.delete(&moved).await.unwrap();
+        LocalProvider.delete(&sub).await.unwrap();
+        assert!(matches!(
+            LocalProvider.stat(&sub).await,
+            Err(Error::NotFound(_))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn set_permissions_and_modified() {
+        let dir = fixture();
+        let file = path_str(&dir.path().join("a.txt"));
+        let time = DateTime::parse_from_rfc3339("2020-01-02T03:04:05Z")
+            .unwrap()
+            .to_utc();
+        LocalProvider.set_modified(&file, time).await.unwrap();
+        LocalProvider.set_permissions(&file, 0o600).await.unwrap();
+        let entry = LocalProvider.stat(&file).await.unwrap();
+        assert_eq!(entry.modified, Some(time));
+        assert_eq!(entry.permissions.unwrap().mode, Some(0o600));
     }
 
     #[tokio::test]

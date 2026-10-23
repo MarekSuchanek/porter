@@ -1,0 +1,18 @@
+[package]
+name = "porter-jobs"
+description = "Job engine for Porter: copy, move, delete and chmod with progress and cancellation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+futures = "0.3"
+porter-core.workspace = true
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util"] }
+tokio-util = "0.7"
+
+[dev-dependencies]
+porter-backends.workspace = true
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

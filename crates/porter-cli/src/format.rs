@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Local, Utc};
 use porter_core::{Entry, EntryKind, FsInfo};
+use porter_jobs::Report;
 
 pub fn display_name(entry: &Entry) -> String {
     match entry.kind {
@@ -105,6 +106,25 @@ pub fn print_df(infos: &[FsInfo]) {
             "{mount:<w0$}  {fs_type:<w1$}  {size:>w2$}  {used:>w3$}  {avail:>w4$}  {pct:>w5$}"
         );
     }
+}
+
+/// One-line outcome such as `Copied 12 files, 3 directories (4.2M), 1 skipped`.
+pub fn summary(verb: &str, report: &Report) -> String {
+    let plural = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    let mut line = format!("{verb} {}", plural(report.files, "file", "files"));
+    if report.dirs > 0 {
+        line += &format!(", {}", plural(report.dirs, "directory", "directories"));
+    }
+    if report.bytes > 0 {
+        line += &format!(" ({})", human_bytes(report.bytes));
+    }
+    if report.skipped > 0 {
+        line += &format!(", {} skipped", report.skipped);
+    }
+    if !report.errors.is_empty() {
+        line += &format!(", {} failed", report.errors.len());
+    }
+    line
 }
 
 fn permissions(entry: &Entry) -> String {
