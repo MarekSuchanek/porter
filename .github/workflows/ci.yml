@@ -50,4 +50,5 @@ jobs:
         run: cargo fmt --all --check
 
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      # Run every test binary even when one fails, to see all platform issues at once.
+      - run: cargo test --workspace --no-fail-fast

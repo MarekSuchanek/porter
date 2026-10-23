@@ -21,7 +21,8 @@ pub struct SearchOptions {
     /// Glob on the name, e.g. `*.pdf`; text without glob characters matches anywhere
     /// in the name (`report` finds `Q3 report.pdf`).
     pub name: Option<String>,
-    /// Regular expression on the name, or on the path below the root with `full_path`.
+    /// Regular expression on the name, or with `full_path` on the path below the root,
+    /// always `/`-separated (also on Windows).
     pub regex: Option<String>,
     pub full_path: bool,
     pub case_sensitive: bool,
@@ -193,7 +194,9 @@ impl Matcher {
                 .strip_prefix(&self.root)
                 .unwrap_or(&entry.path)
                 .trim_start_matches(['/', '\\']);
-            if !self.regex.as_ref().is_none_or(|r| r.is_match(relative)) {
+            // One pattern for every platform: `src/.*\.rs$` must match `src\main.rs` too.
+            let relative = relative.replace('\\', "/");
+            if !self.regex.as_ref().is_none_or(|r| r.is_match(&relative)) {
                 return false;
             }
         }
