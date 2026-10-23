@@ -85,7 +85,10 @@ pub fn print_df(infos: &[FsInfo]) {
             _ => "-".into(),
         };
         rows.push([
-            info.mount_point.clone().unwrap_or_else(|| "-".into()),
+            info.mount_point
+                .clone()
+                .or_else(|| info.name.clone())
+                .unwrap_or_else(|| "-".into()),
             info.fs_type.clone().unwrap_or_else(|| "-".into()),
             opt_bytes(info.total_bytes),
             opt_bytes(info.used_bytes()),
@@ -105,6 +108,24 @@ pub fn print_df(infos: &[FsInfo]) {
         println!(
             "{mount:<w0$}  {fs_type:<w1$}  {size:>w2$}  {used:>w3$}  {avail:>w4$}  {pct:>w5$}"
         );
+    }
+}
+
+/// Prints left-aligned columns under a header.
+pub fn print_table<const N: usize>(header: &[String; N], rows: &[[String; N]]) {
+    let mut widths = [0; N];
+    for row in std::iter::once(header).chain(rows) {
+        for (w, cell) in widths.iter_mut().zip(row) {
+            *w = (*w).max(cell.chars().count());
+        }
+    }
+    for row in std::iter::once(header).chain(rows) {
+        let cells: Vec<String> = row
+            .iter()
+            .zip(widths)
+            .map(|(cell, w)| format!("{cell:<w$}"))
+            .collect();
+        println!("{}", cells.join("  ").trim_end());
     }
 }
 
@@ -132,7 +153,17 @@ fn permissions(entry: &Entry) -> String {
         .permissions
         .as_ref()
         .map(|p| p.to_unix_string(entry.kind))
-        .unwrap_or_else(|| "-".repeat(10))
+        // Unknown, like `ls` shows it; object stores have no permissions.
+        .unwrap_or_else(|| format!("{}?????????", type_char(entry.kind)))
+}
+
+fn type_char(kind: EntryKind) -> char {
+    match kind {
+        EntryKind::Dir => 'd',
+        EntryKind::Symlink => 'l',
+        EntryKind::File => '-',
+        EntryKind::Other => '?',
+    }
 }
 
 fn local_time(time: DateTime<Utc>) -> String {

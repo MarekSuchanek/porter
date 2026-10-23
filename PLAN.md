@@ -44,7 +44,13 @@ porter/
 
 - **Location** — every place is addressed by a URI: `file:///…` (or a plain OS path),
   `s3://bucket/key`, `sftp://user@host/path`, `smb://server/share/path`, `nfs://…`.
-  Saved connection profiles get aliases usable as `alias:/path` (like rclone remotes).
+  Saved remotes are addressed as `name:/path` (like rclone). Names start with a letter
+  and have at least two characters, so `C:\dir` stays a Windows path; `./name:x` forces
+  a local path.
+- **Remotes** — profiles live in `config.toml` in the OS config dir (`$PORTER_CONFIG_DIR`
+  overrides it). Each remote has at most one secret (FTP password, S3 secret key),
+  stored in the OS keychain under service `porter`, account `remote/<name>` — never in
+  the file. A `Registry` resolves locations and caches one provider per backend.
 - **Provider** — one implementation per backend. Async, object-safe (`dyn Provider`).
   Listings are *streams* so huge directories render progressively.
 - **Capabilities** — each provider declares what it supports (chmod, chown, symlinks,
@@ -96,7 +102,8 @@ porter mkdir LOCATION… [-p]
 porter chmod MODE LOCATION… [-R]                     # MODE: 755 or u+x,go-w,a=rX
 porter chown OWNER[:GROUP] LOCATION… [-R]                                           # later
 porter find LOCATION [--name GLOB] [--regex RE] [--size +10M] [--newer 7d] [--type f|d]  # M5
-porter remote add|list|remove|test                                                  # M3
+porter remote add sftp|s3|ftp NAME [options] [--ask-secret|--secret-stdin]
+porter remote list|remove|test
 ```
 
 ## Milestones
@@ -108,8 +115,14 @@ porter remote add|list|remove|test                                              
    Deferred: chown/owner names, pause/resume, checksum verification, local fast
    paths (APFS `clonefile`, Linux `copy_file_range`/reflinks), trash instead of
    delete, Windows symlinks, non-UTF-8 file names.
-3. **M3 Remotes I** — OpenDAL-backed providers (SFTP, S3, FTP, WebDAV); connection
-   profiles in config; credentials in the OS keychain; `porter remote …`.
+3. **M3 Remotes I** — OpenDAL-backed providers (SFTP, S3, FTP); connection profiles in
+   config; credentials in the OS keychain; `porter remote …`. ✅ Verified live against
+   MinIO, OpenSSH sftp-server and vsftpd.
+   Known limits / follow-ups: SFTP is key/agent-only and Unix-only (OpenDAL drives the
+   system `ssh`; Windows needs a russh-based backend); remotes don't keep mtimes or
+   permissions; the engine doesn't use server-side copy yet; S3/FTP moves are
+   copy + delete; write-if-absent is check-then-write (racy); error texts from servers
+   are passed through verbatim; WebDAV and other OpenDAL services are not wired up.
 4. **M4 GUI v1** — Tauri + Svelte app: browser with tabs, sidebar, inspector,
    transfer drawer, dual-pane toggle.
 5. **M5 Search** — `find` with name/glob/regex/size/date/type filters; streaming

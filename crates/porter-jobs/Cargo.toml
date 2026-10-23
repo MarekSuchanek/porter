@@ -13,6 +13,7 @@ tokio = { version = "1", features = ["io-util"] }
 tokio-util = "0.7"
 
 [dev-dependencies]
+opendal = { version = "0.59", default-features = false, features = ["services-memory", "executors-tokio"] }
 porter-backends.workspace = true
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

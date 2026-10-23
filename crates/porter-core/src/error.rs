@@ -13,7 +13,8 @@ pub enum Error {
     #[error("{0}: permission denied")]
     PermissionDenied(String),
 
-    /// A rename crossed file systems; callers fall back to copy + delete.
+    /// A rename is not possible here (across file systems, or the backend can't
+    /// rename this kind of entry); callers fall back to copy + delete.
     #[error("{0}: cannot rename across file systems")]
     CrossDevice(String),
 
@@ -28,6 +29,10 @@ pub enum Error {
 
     #[error("cancelled")]
     Cancelled,
+
+    /// Any other failure reported by a backend, a credential store or the config.
+    #[error("{context}: {message}")]
+    Backend { context: String, message: String },
 
     #[error("{path}: {source}")]
     Io {
@@ -54,6 +59,13 @@ impl Error {
         Self::InvalidLocation {
             input: input.into(),
             reason: reason.into(),
+        }
+    }
+
+    pub fn backend(context: impl Into<String>, message: impl ToString) -> Self {
+        Self::Backend {
+            context: context.into(),
+            message: message.to_string(),
         }
     }
 

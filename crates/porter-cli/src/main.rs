@@ -1,14 +1,16 @@
 mod format;
 mod progress;
+mod remote;
 
 use std::cmp::Reverse;
 use std::io::IsTerminal;
 use std::process::ExitCode;
+use std::sync::OnceLock;
 
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use futures::TryStreamExt;
-use porter_backends::{local, target};
+use porter_backends::{Registry, local};
 use porter_core::{Entry, FsInfo, ModeSpec, Target};
 use porter_jobs::{Conflict, CopyOptions, DeleteOptions, Job, Report};
 use serde::Serialize;
@@ -73,6 +75,11 @@ enum Command {
         /// Apply to directory contents too
         #[arg(short = 'R', long)]
         recursive: bool,
+    },
+    /// Manage saved remotes (SFTP, S3, FTP)
+    Remote {
+        #[command(subcommand)]
+        command: remote::RemoteCommand,
     },
 }
 
@@ -164,7 +171,15 @@ async fn main() -> ExitCode {
     }
 }
 
+/// Saved remotes and cached connections, loaded once at startup.
+static REGISTRY: OnceLock<Registry> = OnceLock::new();
+
+fn registry() -> &'static Registry {
+    REGISTRY.get().expect("registry is initialized in run()")
+}
+
 async fn run(cli: Cli) -> Result<()> {
+    let _ = REGISTRY.set(Registry::load()?);
     match cli.command {
         Command::Ls(args) => ls(args).await,
         Command::Stat { location, json } => stat(&location, json).await,
@@ -182,6 +197,7 @@ async fn run(cli: Cli) -> Result<()> {
             locations,
             recursive,
         } => chmod(&mode, &locations, recursive).await,
+        Command::Remote { command } => remote::run(command, registry()).await,
     }
 }
 
@@ -325,11 +341,12 @@ async fn chmod(mode: &str, locations: &[String], recursive: bool) -> Result<()> 
     finish("Changed", &report)
 }
 
+fn target(location: &str) -> Result<Target> {
+    Ok(registry().target(location)?)
+}
+
 fn targets(locations: &[String]) -> Result<Vec<Target>> {
-    Ok(locations
-        .iter()
-        .map(|l| target(l))
-        .collect::<porter_core::Result<_>>()?)
+    locations.iter().map(|l| target(l)).collect()
 }
 
 fn split_dest(paths: &[String]) -> Result<(Vec<Target>, Target)> {
