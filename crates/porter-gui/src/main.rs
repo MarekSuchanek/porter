@@ -5,6 +5,7 @@ mod api;
 mod jobs;
 #[cfg(target_os = "macos")]
 mod menu;
+mod search;
 
 use std::fmt::Display;
 use std::sync::Arc;
@@ -33,6 +34,12 @@ impl EventSink for UiSink {
     }
     fn finished(&self, summary: &JobSummary) {
         let _ = self.0.emit("job-finished", summary);
+    }
+    fn search_progress(&self, event: &search::SearchProgress) {
+        let _ = self.0.emit("search-progress", event);
+    }
+    fn search_finished(&self, summary: &search::SearchSummary) {
+        let _ = self.0.emit("search-finished", summary);
     }
 }
 
@@ -94,6 +101,18 @@ async fn start_job(
 }
 
 #[tauri::command]
+async fn start_search(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: search::SearchRequest,
+) -> CmdResult<u64> {
+    state
+        .jobs
+        .search(&state.registry, request, Arc::new(UiSink(app)))
+        .map_err(message)
+}
+
+#[tauri::command]
 fn cancel_job(state: State<'_, AppState>, id: u64) -> bool {
     state.jobs.cancel(id)
 }
@@ -114,7 +133,15 @@ fn main() {
             config_error,
         })
         .invoke_handler(tauri::generate_handler![
-            list_dir, stat, sidebar, mkdir, rename, open, start_job, cancel_job
+            list_dir,
+            stat,
+            sidebar,
+            mkdir,
+            rename,
+            open,
+            start_job,
+            start_search,
+            cancel_job
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Porter");

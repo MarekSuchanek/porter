@@ -91,6 +91,8 @@ pub trait EventSink: Send + Sync + 'static {
     fn started(&self, info: &JobInfo);
     fn progress(&self, event: &ProgressEvent);
     fn finished(&self, summary: &JobSummary);
+    fn search_progress(&self, _event: &crate::search::SearchProgress) {}
+    fn search_finished(&self, _summary: &crate::search::SearchSummary) {}
 }
 
 enum Operation {
@@ -159,17 +161,15 @@ impl JobManager {
             ),
         };
 
+        let (id, job) = self.register();
         let info = JobInfo {
-            id: self.next_id.fetch_add(1, Ordering::Relaxed) + 1,
+            id,
             kind,
             title: title(&operation),
         };
-        let job = Job::new();
-        self.running.lock().unwrap().insert(info.id, job.clone());
         sink.started(&info);
 
         let manager = Arc::clone(self);
-        let id = info.id;
         tokio::spawn(async move {
             let ticker = tokio::spawn({
                 let (job, sink) = (job.clone(), sink.clone());
@@ -183,10 +183,22 @@ impl JobManager {
             let report = run(&job, operation).await;
             ticker.abort();
             sink.progress(&progress(id, &job));
-            manager.running.lock().unwrap().remove(&id);
+            manager.unregister(id);
             sink.finished(&summary(id, report));
         });
         Ok(info)
+    }
+
+    /// A new job id, cancellable through [`cancel`](Self::cancel) until unregistered.
+    pub(crate) fn register(&self) -> (u64, Job) {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
+        let job = Job::new();
+        self.running.lock().unwrap().insert(id, job.clone());
+        (id, job)
+    }
+
+    pub(crate) fn unregister(&self, id: u64) {
+        self.running.lock().unwrap().remove(&id);
     }
 
     /// Returns whether a running job with this id was found.

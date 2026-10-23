@@ -1,5 +1,5 @@
 import { keysFor } from './commands';
-import { app, prefs, type MenuEntry, type Pane, type Tab } from './state.svelte';
+import { app, parentOf, prefs, type MenuEntry, type Pane, type Tab } from './state.svelte';
 
 /** Right-click on selected entries. */
 export function itemMenu(pane: Pane, tab: Tab): MenuEntry[] {
@@ -12,6 +12,13 @@ export function itemMenu(pane: Pane, tab: Tab): MenuEntry[] {
   ];
   if (one?.kind === 'dir') {
     entries.push({ label: 'Open in new tab', icon: 'plus', run: () => app.newTab(one.location) });
+  }
+  if (one && pane.search) {
+    entries.push({
+      label: 'Show in enclosing folder',
+      icon: 'folder',
+      run: () => pane.open(parentOf(one.location), { focus: one.location }),
+    });
   }
   entries.push(
     'separator',

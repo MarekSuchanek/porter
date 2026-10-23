@@ -85,7 +85,7 @@
         aria-sort={pane.sortKey === col.key ? (pane.sortDesc ? 'descending' : 'ascending') : 'none'}
         onclick={() => pane.setSort(col.key)}
       >
-        {col.label}
+        {col.key === 'kind' && pane.search ? 'Folder' : col.label}
         {#if pane.sortKey === col.key}<span class="arrow">{pane.sortDesc ? '▾' : '▴'}</span>{/if}
       </button>
     {/each}
@@ -142,12 +142,19 @@
           </span>
           <span class="cell c-size end muted" role="gridcell">{item.kind === 'dir' ? '—' : bytes(item.size)}</span>
           <span class="cell c-modified muted" role="gridcell">{date(item.modified)}</span>
-          <span class="cell c-kind muted" role="gridcell">{kindLabel(item)}</span>
+          {#if pane.search}
+            {@const folder = pane.search.folderOf(item)}
+            <span class="cell c-kind muted" role="gridcell" title={item.location}>{folder}</span>
+          {:else}
+            <span class="cell c-kind muted" role="gridcell">{kindLabel(item)}</span>
+          {/if}
         </div>
       {/each}
     </div>
 
-    {#if pane.listing && !pane.items.length}
+    {#if pane.search && !pane.items.length}
+      <div class="empty">{pane.search.running ? 'Searching…' : pane.search.error ? '' : 'No matches'}</div>
+    {:else if pane.listing && !pane.items.length}
       <div class="empty">
         {#if pane.filter}
           No items match “{pane.filter}”

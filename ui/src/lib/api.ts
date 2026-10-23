@@ -4,6 +4,7 @@ import type {
   JobInfo,
   JobRequest,
   Listing,
+  SearchRequest,
   SidebarData,
 } from './types';
 
@@ -49,6 +50,7 @@ export const api = {
   open: (location: string) => call<void>('open', { location }),
   startJob: (request: JobRequest) => call<JobInfo>('start_job', { request }),
   cancelJob: (id: number) => call<boolean>('cancel_job', { id }),
+  startSearch: (request: SearchRequest) => call<number>('start_search', { request }),
   async on<K extends keyof JobEvents>(event: K, handler: (payload: JobEvents[K]) => void) {
     return (await getBackend()).listen(event, handler);
   },

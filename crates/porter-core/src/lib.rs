@@ -11,5 +11,5 @@ pub use entry::{Entry, EntryKind, FsInfo, Permissions};
 pub use error::{Error, Result};
 pub use location::Location;
 pub use mode::{Clause, ModeSpec};
-pub use provider::{Capabilities, EntryStream, Provider, Reader, Writer};
+pub use provider::{Capabilities, EntryStream, NameFilter, Provider, Reader, WalkOptions, Writer};
 pub use target::Target;

@@ -1,13 +1,35 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::stream::BoxStream;
 use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::{Entry, Error, FsInfo, Result};
+use crate::{Entry, EntryKind, Error, FsInfo, Result};
 
 /// Directory listings are streamed so very large directories render progressively.
 pub type EntryStream = BoxStream<'static, Result<Entry>>;
+
+/// Cheap pre-filter on an entry's name and kind, applied before any metadata is read.
+pub type NameFilter = Arc<dyn Fn(&str, EntryKind) -> bool + Send + Sync>;
+
+/// How to walk a tree recursively.
+#[derive(Clone, Default)]
+pub struct WalkOptions {
+    /// Also yield, and descend into, entries whose names start with a dot.
+    pub include_hidden: bool,
+    /// Levels below the root to visit; `Some(1)` lists only the root's children.
+    pub max_depth: Option<usize>,
+    /// Only entries passing this are yielded; directories are descended into regardless.
+    pub wants: Option<NameFilter>,
+}
+
+impl WalkOptions {
+    pub fn wants(&self, name: &str, kind: EntryKind) -> bool {
+        self.wants.as_ref().is_none_or(|f| f(name, kind))
+    }
+}
 
 pub type Reader = Box<dyn AsyncRead + Send + Unpin>;
 pub type Writer = Box<dyn AsyncWrite + Send + Unpin>;
@@ -74,6 +96,13 @@ pub trait Provider: Send + Sync {
 
     /// Information about the file system holding `path`.
     async fn fs_info(&self, path: &str) -> Result<FsInfo>;
+
+    /// Every entry below `path` (not `path` itself), in no particular order, if the
+    /// backend has a faster way than listing directory by directory (the local file
+    /// system walks in parallel). `None` means callers should walk with [`list`](Self::list).
+    async fn walk(&self, _path: &str, _opts: &WalkOptions) -> Result<Option<EntryStream>> {
+        Ok(None)
+    }
 
     async fn read(&self, _path: &str) -> Result<Reader> {
         Err(Error::unsupported("read", self.scheme()))

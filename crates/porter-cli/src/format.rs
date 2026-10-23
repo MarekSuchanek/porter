@@ -33,6 +33,13 @@ pub fn print_long(entries: &[Entry]) {
     }
 }
 
+/// One `ls -l` style line with a fixed-width size column, for streamed output.
+pub fn long_line(entry: &Entry, label: &str) -> String {
+    let size = entry.size.map(human_bytes).unwrap_or_else(|| "-".into());
+    let modified = entry.modified.map(local_time).unwrap_or_else(|| "-".into());
+    format!("{}  {size:>6}  {modified}  {label}", permissions(entry))
+}
+
 pub fn print_stat(entry: &Entry) {
     let field = |key: &str, value: &str| println!("{key:>9}: {value}");
     let kind = match entry.kind {

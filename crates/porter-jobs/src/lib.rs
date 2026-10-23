@@ -8,12 +8,14 @@ mod chmod;
 mod copy;
 mod delete;
 mod job;
+mod search;
 mod walk;
 
 pub use chmod::chmod;
 pub use copy::{Conflict, CopyOptions, copy, move_to};
 pub use delete::{DeleteOptions, delete};
 pub use job::{Job, Progress, Report, Snapshot};
+pub use search::{SearchOptions, SizeFilter, parse_time, search};
 
 use porter_core::{Error, Result, Target};
 
@@ -61,5 +63,6 @@ mod tests {
         assert_send(delete(job, targets, &DeleteOptions::default()));
         assert_send(chmod(job, targets, spec, true));
         assert_send(mkdir(&targets[0], true));
+        assert_send(search(job, &targets[0], &SearchOptions::default(), |_| {}));
     }
 }

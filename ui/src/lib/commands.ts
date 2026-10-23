@@ -37,6 +37,7 @@ export const commands: Command[] = [
   { id: 'toggle-hidden', title: 'Show or hide hidden files', group: 'View', keys: [{ code: 'Period', mod: true, shift: true }], run: () => (prefs.showHidden = !prefs.showHidden) },
   { id: 'toggle-inspector', title: 'Show or hide inspector', group: 'View', keys: [{ key: 'i', mod: true }], run: () => (prefs.inspector = !prefs.inspector) },
   { id: 'toggle-transfers', title: 'Show or hide transfers', group: 'View', keys: [{ key: 'j', mod: true }], run: () => (prefs.drawer = !prefs.drawer) },
+  { id: 'search', title: 'Search subfolders…', group: 'Go', keys: [{ key: 'f', mod: true }], run: () => app.focusFilter++ },
   { id: 'go-location', title: 'Go to location…', group: 'Go', keys: [{ key: 'l', mod: true }], run: () => app.editPath++ },
   { id: 'go-home', title: 'Go to Home', group: 'Go', keys: [{ key: 'h', mod: true, shift: true }], run: () => app.go(app.sidebar?.places[0]?.location ?? '/') },
   { id: 'back', title: 'Back', group: 'Go', keys: [{ key: '[', mod: true }, { key: 'ArrowLeft', alt: !isMac, mod: isMac }], run: () => app.pane?.back() },

@@ -11,6 +11,7 @@ import type {
   JobRequest,
   JobSummary,
   Listing,
+  SearchRequest,
   SidebarData,
 } from './types';
 
@@ -237,6 +238,50 @@ function runJob(request: JobRequest): JobInfo {
   return info;
 }
 
+function runSearch(request: SearchRequest): number {
+  const root = parse(request.location);
+  const start = lookup(root);
+  if (!start.dir) throw `${request.location}: not a directory`;
+  const id = nextJob++;
+  const name = request.name.trim();
+  const pattern = !name
+    ? null
+    : /[*?[{]/.test(name)
+      ? new RegExp(`^${name.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i')
+      : new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const minSize = request.min_size ? Number(request.min_size.replace(/[^\d]/g, '')) * ({ k: 1e3, M: 1e6, G: 1e9 }[request.min_size.slice(-1)] ?? 1) : 0;
+
+  // Walk the whole mock tree up front, then stream it out in batches like the backend.
+  const matches: Item[] = [];
+  let scanned = 0;
+  const walk = (node: Node, p: Parsed) => {
+    for (const child of node.children?.values() ?? []) {
+      if (!request.hidden && child.name.startsWith('.')) continue;
+      scanned++;
+      const cp = { fs: p.fs, parts: [...p.parts, child.name] };
+      const kindOk = !request.kind || (request.kind === 'dir') === child.dir;
+      const sizeOk = !minSize || (!child.dir && child.size >= minSize);
+      if (kindOk && sizeOk && (!pattern || pattern.test(child.name))) matches.push(toItem(child, cp));
+      if (child.dir) walk(child, cp);
+    }
+  };
+  walk(start, root);
+
+  let sent = 0;
+  const timer = setInterval(() => {
+    const stop = cancelled.has(id);
+    const items = stop ? [] : matches.slice(sent, sent + 25);
+    sent += items.length;
+    emit('search-progress', { id, items, scanned: Math.round((scanned * sent) / Math.max(1, matches.length)), matched: sent });
+    if (stop || sent >= matches.length) {
+      clearInterval(timer);
+      cancelled.delete(id);
+      emit('search-finished', { id, matched: sent, scanned, unreadable: 0, cancelled: stop, limited: false, error: null });
+    }
+  }, 90);
+  return id;
+}
+
 // ---- commands ----
 
 const commands: Record<string, (args: Record<string, any>) => unknown> = {
@@ -305,6 +350,7 @@ const commands: Record<string, (args: Record<string, any>) => unknown> = {
     console.info('[mock] open', location);
   },
   start_job: ({ request }) => runJob(request),
+  start_search: ({ request }) => runSearch(request),
   cancel_job({ id }) {
     cancelled.add(id);
     return true;

@@ -126,8 +126,39 @@ export interface JobSummary {
   cancelled: boolean;
 }
 
+export interface SearchRequest {
+  location: string;
+  /** Glob (`*.pdf`) or text contained in the name; empty matches everything. */
+  name: string;
+  kind: 'file' | 'dir' | null;
+  /** Size spec such as `+100M`. */
+  min_size: string | null;
+  /** Age spec such as `7d`. */
+  newer: string | null;
+  hidden: boolean;
+}
+
+export interface SearchProgress {
+  id: number;
+  items: Item[];
+  scanned: number;
+  matched: number;
+}
+
+export interface SearchSummary {
+  id: number;
+  matched: number;
+  scanned: number;
+  unreadable: number;
+  cancelled: boolean;
+  limited: boolean;
+  error: string | null;
+}
+
 export interface JobEvents {
   'job-started': JobInfo;
   'job-progress': JobProgress;
   'job-finished': JobSummary;
+  'search-progress': SearchProgress;
+  'search-finished': SearchSummary;
 }

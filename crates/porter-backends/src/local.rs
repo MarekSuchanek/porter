@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use porter_core::{
     Capabilities, Entry, EntryKind, EntryStream, Error, FsInfo, Location, Permissions, Provider,
-    Reader, Result, Writer,
+    Reader, Result, WalkOptions, Writer,
 };
 use sysinfo::Disks;
 use tokio::sync::mpsc;
@@ -101,6 +101,46 @@ impl Provider for LocalProvider {
             }
         });
         Ok(futures::stream::poll_fn(move |cx| rx.poll_recv(cx)).boxed())
+    }
+
+    async fn walk(&self, path: &str, opts: &WalkOptions) -> Result<Option<EntryStream>> {
+        let root = absolute(path)?;
+        let opts = opts.clone();
+        let (tx, mut rx) = mpsc::channel(LIST_BUFFER);
+        task::spawn_blocking(move || {
+            let mut walker = jwalk::WalkDir::new(&root)
+                .skip_hidden(!opts.include_hidden)
+                .follow_links(false)
+                .sort(false)
+                .min_depth(1)
+                // A pool of its own: concurrent walks would otherwise starve each other.
+                .parallelism(jwalk::Parallelism::RayonNewPool(0));
+            if let Some(depth) = opts.max_depth {
+                walker = walker.max_depth(depth);
+            }
+            for item in walker {
+                let item = match item {
+                    Ok(dir_entry) => {
+                        let name = dir_entry.file_name().to_string_lossy();
+                        // Metadata costs a syscall per entry; only read it for wanted ones.
+                        if !opts.wants(&name, kind_of(dir_entry.file_type())) {
+                            continue;
+                        }
+                        let path = dir_entry.path();
+                        fs::symlink_metadata(&path)
+                            .map(|meta| to_entry(&path, &meta))
+                            .map_err(|e| Error::io(path.display().to_string(), e))
+                    }
+                    Err(e) => Err(walk_error(e)),
+                };
+                if tx.blocking_send(item).is_err() {
+                    break; // consumer went away
+                }
+            }
+        });
+        Ok(Some(
+            futures::stream::poll_fn(move |cx| rx.poll_recv(cx)).boxed(),
+        ))
     }
 
     async fn fs_info(&self, path: &str) -> Result<FsInfo> {
@@ -231,9 +271,8 @@ fn absolute(path: &str) -> Result<PathBuf> {
     std::path::absolute(path).map_err(|e| Error::io(path, e))
 }
 
-fn to_entry(path: &Path, meta: &Metadata) -> Entry {
-    let file_type = meta.file_type();
-    let kind = if file_type.is_symlink() {
+fn kind_of(file_type: fs::FileType) -> EntryKind {
+    if file_type.is_symlink() {
         EntryKind::Symlink
     } else if file_type.is_dir() {
         EntryKind::Dir
@@ -241,7 +280,22 @@ fn to_entry(path: &Path, meta: &Metadata) -> Entry {
         EntryKind::File
     } else {
         EntryKind::Other
-    };
+    }
+}
+
+fn walk_error(e: jwalk::Error) -> Error {
+    let path = e
+        .path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    match e.io_error() {
+        Some(io) => Error::io(path, std::io::Error::new(io.kind(), io.to_string())),
+        None => Error::backend(path, e),
+    }
+}
+
+fn to_entry(path: &Path, meta: &Metadata) -> Entry {
+    let kind = kind_of(meta.file_type());
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -436,6 +490,49 @@ mod tests {
         let entry = LocalProvider.stat(&file).await.unwrap();
         assert_eq!(entry.modified, Some(time));
         assert_eq!(entry.permissions.unwrap().mode, Some(0o600));
+    }
+
+    #[tokio::test]
+    async fn walks_recursively_with_options() {
+        let dir = fixture();
+        fs::write(dir.path().join("sub/deep.txt"), b"d").unwrap();
+        fs::create_dir(dir.path().join(".git")).unwrap();
+        fs::write(dir.path().join(".git/config"), b"").unwrap();
+        let root = path_str(dir.path());
+
+        let walk = |opts: WalkOptions| {
+            let root = root.clone();
+            async move {
+                let stream = LocalProvider.walk(&root, &opts).await.unwrap().unwrap();
+                let mut names: Vec<String> = stream.map_ok(|e| e.name).try_collect().await.unwrap();
+                names.sort();
+                names
+            }
+        };
+
+        assert_eq!(
+            walk(WalkOptions::default()).await,
+            ["a.txt", "deep.txt", "sub"]
+        );
+        let all = WalkOptions {
+            include_hidden: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            walk(all).await,
+            [".git", ".hidden", "a.txt", "config", "deep.txt", "sub"]
+        );
+        let shallow = WalkOptions {
+            max_depth: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(walk(shallow).await, ["a.txt", "sub"]);
+        let files: porter_core::NameFilter = std::sync::Arc::new(|_, kind| kind == EntryKind::File);
+        let only_files = WalkOptions {
+            wants: Some(files),
+            ..Default::default()
+        };
+        assert_eq!(walk(only_files).await, ["a.txt", "deep.txt"]);
     }
 
     #[tokio::test]

@@ -9,6 +9,8 @@ import type {
   JobRequest,
   JobSummary,
   Listing,
+  SearchProgress,
+  SearchSummary,
   SidebarData,
 } from './types';
 
@@ -28,6 +30,61 @@ export const prefs = $state({
   drawer: false,
 });
 
+// ---- search ----
+
+export interface SearchFilters {
+  kind: '' | 'file' | 'dir';
+  /** Size spec such as `+100M`, or empty. */
+  size: string;
+  /** Age spec such as `7d`, or empty. */
+  newer: string;
+  hidden: boolean;
+}
+
+/** A recursive search shown in a pane instead of the folder's contents. */
+export class Search {
+  id = $state<number | null>(null);
+  results = $state.raw<Item[]>([]);
+  running = $state(true);
+  scanned = $state(0);
+  matched = $state(0);
+  unreadable = $state(0);
+  limited = $state(false);
+  error = $state<string | null>(null);
+
+  constructor(
+    readonly query: string,
+    readonly root: string,
+    readonly rootName: string,
+    readonly filters: SearchFilters,
+  ) {}
+
+  progress(p: SearchProgress) {
+    if (p.items.length) this.results = this.results.concat(p.items);
+    this.scanned = p.scanned;
+    this.matched = p.matched;
+  }
+
+  finish(s: SearchSummary) {
+    this.running = false;
+    this.scanned = s.scanned;
+    this.matched = s.matched;
+    this.unreadable = s.unreadable;
+    this.limited = s.limited;
+    this.error = s.error;
+  }
+
+  /** Path of an item's folder relative to the search root, e.g. `2024/raw`. */
+  folderOf(item: Item): string {
+    const relative = item.location.startsWith(this.root)
+      ? item.location.slice(this.root.length).replace(/^[\\/]+/, '')
+      : item.location;
+    return relative.slice(0, Math.max(0, relative.length - item.name.length)).replace(/[\\/]+$/, '') || '.';
+  }
+}
+
+const NO_FILTERS: SearchFilters = { kind: '', size: '', newer: '', hidden: false };
+
 // ---- panes & tabs ----
 
 export class Pane {
@@ -43,6 +100,8 @@ export class Pane {
   selection = new SvelteSet<string>();
   canBack = $state(false);
   canForward = $state(false);
+  /** Active recursive search; while set, the pane shows its results. */
+  search = $state<Search | null>(null);
 
   #anchor: string | null = null;
   #back: string[] = [];
@@ -51,18 +110,24 @@ export class Pane {
 
   /** Visible entries: hidden/filter applied, folders first, then by the sort key. */
   items = $derived.by(() => {
+    const search = this.search;
     const listing = this.listing;
-    if (!listing) return [];
+    if (!listing && !search) return [];
     const query = this.filter.trim().toLowerCase();
-    const items = listing.items.filter(
-      (i) => (prefs.showHidden || !i.hidden) && (!query || i.name.toLowerCase().includes(query)),
-    );
+    // Search results are already filtered by the backend.
+    const items = search
+      ? [...search.results]
+      : listing!.items.filter(
+          (i) => (prefs.showHidden || !i.hidden) && (!query || i.name.toLowerCase().includes(query)),
+        );
     const order = this.sortDesc ? -1 : 1;
     const compare: Record<SortKey, (a: Item, b: Item) => number> = {
       name: (a, b) => collator.compare(a.name, b.name),
       size: (a, b) => (a.size ?? -1) - (b.size ?? -1),
       modified: (a, b) => (Date.parse(a.modified ?? '') || 0) - (Date.parse(b.modified ?? '') || 0),
-      kind: (a, b) => collator.compare(kindLabel(a), kindLabel(b)),
+      kind: search
+        ? (a, b) => collator.compare(search.folderOf(a), search.folderOf(b))
+        : (a, b) => collator.compare(kindLabel(a), kindLabel(b)),
     };
     const byKey = compare[this.sortKey];
     return items.sort((a, b) => {
@@ -94,6 +159,7 @@ export class Pane {
         this.#forward = [];
       }
       const sameDir = previous === listing.location;
+      if (!sameDir || !keep) this.exitSearch();
       this.listing = listing;
       this.location = listing.location;
       this.error = null;
@@ -119,7 +185,47 @@ export class Pane {
   }
 
   refresh() {
+    if (this.search) return this.startSearch(this.search.query, this.search.filters);
     return this.open(this.location, { push: false, keep: true });
+  }
+
+  /** Searches below the current folder; results replace the listing until exited. */
+  async startSearch(query = this.filter.trim(), filters: SearchFilters = this.search?.filters ?? NO_FILTERS) {
+    this.stopSearch();
+    const root = this.search?.root ?? this.location;
+    const rootName = this.search?.rootName ?? this.title;
+    const search = new Search(query, root, rootName, { ...filters });
+    this.search = search;
+    this.selection.clear();
+    this.cursor = null;
+    try {
+      const id = await api.startSearch({
+        location: root,
+        name: query,
+        kind: filters.kind || null,
+        min_size: filters.size || null,
+        newer: filters.newer || null,
+        hidden: filters.hidden,
+      });
+      search.id = id;
+      app.trackSearch(id, search);
+    } catch (e) {
+      search.running = false;
+      search.error = message(e);
+    }
+  }
+
+  stopSearch() {
+    const search = this.search;
+    if (search?.running && search.id !== null) void api.cancelJob(search.id);
+  }
+
+  exitSearch() {
+    if (!this.search) return;
+    this.stopSearch();
+    this.search = null;
+    this.filter = '';
+    this.selection.clear();
   }
 
   back() {
@@ -283,6 +389,10 @@ class App {
   runningJobs = $derived(this.jobs.filter((j) => !j.summary).length);
 
   #toastTimer: ReturnType<typeof setTimeout> | undefined;
+  #searches = new Map<number, Search>();
+  /** Search events that arrived before the search's id was known. */
+  #early = new Map<number, (SearchProgress | SearchSummary)[]>();
+  #requests = new Map<number, JobRequest>();
 
   async init() {
     const saved = load();
@@ -290,6 +400,8 @@ class App {
     void api.on('job-started', (info) => this.#jobStarted(info));
     void api.on('job-progress', (p) => this.#jobProgress(p));
     void api.on('job-finished', (s) => this.#jobFinished(s));
+    void api.on('search-progress', (p) => this.#searchEvent(p));
+    void api.on('search-finished', (s) => this.#searchEvent(s));
 
     try {
       this.sidebar = await api.sidebar();
@@ -476,7 +588,8 @@ class App {
 
   async start(request: JobRequest) {
     try {
-      await api.startJob(request);
+      const info = await api.startJob(request);
+      this.#requests.set(info.id, request);
       prefs.drawer = true;
     } catch (e) {
       this.notify(message(e), true);
@@ -489,6 +602,27 @@ class App {
 
   clearFinishedJobs() {
     this.jobs = this.jobs.filter((j) => !j.summary);
+  }
+
+  // ---- search events ----
+
+  trackSearch(id: number, search: Search) {
+    this.#searches.set(id, search);
+    for (const event of this.#early.get(id) ?? []) this.#searchEvent(event);
+    this.#early.delete(id);
+  }
+
+  #searchEvent(event: SearchProgress | SearchSummary) {
+    const search = this.#searches.get(event.id);
+    if (!search) {
+      this.#early.set(event.id, [...(this.#early.get(event.id) ?? []), event]);
+      return;
+    }
+    if ('items' in event) search.progress(event);
+    else {
+      search.finish(event);
+      this.#searches.delete(event.id);
+    }
   }
 
   // ---- job events ----
@@ -518,9 +652,18 @@ class App {
     if (summary.errors.length) {
       this.notify(`${job?.info.title ?? 'Job'}: ${summary.errors.length} failed — see Transfers`, true);
     }
-    // Contents and free space changed somewhere; refresh what's on screen.
+    // Contents and free space changed somewhere; refresh what's on screen. Search
+    // results aren't re-run, but entries that were deleted or moved away disappear.
+    const request = this.#requests.get(summary.id);
+    this.#requests.delete(summary.id);
+    const gone = new Set(
+      request?.kind === 'delete' ? request.targets : request?.kind === 'move' ? request.sources : [],
+    );
     for (const tab of this.tabs) {
-      for (const pane of tab.dual ? tab.panes : [tab.active]) void pane.refresh();
+      for (const pane of tab.dual ? tab.panes : [tab.active]) {
+        if (!pane.search) void pane.refresh();
+        else if (gone.size) pane.search.results = pane.search.results.filter((i) => !gone.has(i.location));
+      }
     }
     void this.refreshSidebar();
   }

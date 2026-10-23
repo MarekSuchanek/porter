@@ -7,7 +7,7 @@ use porter_jobs::{Conflict, CopyOptions, Job, move_to};
 use serde::Serialize;
 
 /// An entry plus the location string the UI uses to address it.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Item {
     #[serde(flatten)]
     pub entry: Entry,

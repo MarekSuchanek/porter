@@ -75,7 +75,8 @@ porter/
 |---|---|
 | M1 ✅ | `stat`, `list`, `fs_info`, `capabilities` |
 | M2 ✅ | `stat_follow`, `read`/`write` (tokio `AsyncRead`/`AsyncWrite`), `mkdir`, `delete`, `rename`, `set_permissions`, `set_modified`, `symlink`, path helpers (`join`, `parent`, `file_name`) — all but the M1 methods default to `Unsupported` |
-| later | `set_owner`, server-side `copy`, `search` (optional native search; default walks) |
+| M5 ✅ | `walk` (optional fast recursive listing with a name/kind pre-filter; local uses a parallel `jwalk`; `None` → callers walk with `list`, several directories at a time) |
+| later | `set_owner`, server-side `copy`, native search (e.g. Spotlight, S3 prefix listing) |
 
 ## GUI concept
 
@@ -101,7 +102,8 @@ porter rm LOCATION… [-r] [-n/--dry-run]
 porter mkdir LOCATION… [-p]
 porter chmod MODE LOCATION… [-R]                     # MODE: 755 or u+x,go-w,a=rX
 porter chown OWNER[:GROUP] LOCATION… [-R]                                           # later
-porter find LOCATION [--name GLOB] [--regex RE] [--size +10M] [--newer 7d] [--type f|d]  # M5
+porter find [LOCATION] [-n GLOB|TEXT] [-e RE [--full-path]] [-t f|d|l] [--size +10M] [--size -1G]
+            [--newer 7d] [--older 2026-01-01] [-H] [-d DEPTH] [--limit N] [-l|--json] [--show-errors]
 porter remote add sftp|s3|ftp NAME [options] [--ask-secret|--secret-stdin]
 porter remote list|remove|test
 ```
@@ -132,7 +134,14 @@ porter remote list|remove|test
    thumbnails/Quick Look, editing remotes in the GUI, keyboard customization,
    Windows/Linux packaging checks.
 5. **M5 Search** — `find` with name/glob/regex/size/date/type filters; streaming
-   results in CLI and GUI; parallel local walk.
+   results in CLI and GUI; parallel local walk. ✅ Name/kind filters run before any
+   metadata is read; results stream (CLI stops early when piped into `head`); GUI:
+   Enter in a pane's filter searches subfolders, with type/size/date/hidden filters,
+   live counts, a Folder column and "Show in enclosing folder" (results capped at 5,000).
+   On ~/Projects (≈637k entries) a name search took ≈1.5 s; BSD `find` took 1.3–9 s
+   depending on cache state.
+   Follow-ups: content search (grep), an index for instant search, Spotlight /
+   Windows Search integration, `.gitignore`-aware mode, saved searches.
 6. **M6 Remotes II** — SMB and NFS providers.
 7. **M7 Polish & release** — installers (dmg, msi, AppImage/deb), auto-update,
    signing/notarization, docs.

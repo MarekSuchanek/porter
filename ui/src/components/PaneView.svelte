@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import PathBar from './PathBar.svelte';
   import FileList from './FileList.svelte';
+  import SearchBar from './SearchBar.svelte';
   import { app, type Pane, type Tab } from '../lib/state.svelte';
   import { keysFor } from '../lib/commands';
   import { bytes, plural } from '../lib/format';
@@ -28,13 +29,19 @@
 
   function onFilterKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
-      pane.filter = '';
+      if (pane.search) pane.exitSearch();
+      else pane.filter = '';
       filterInput?.blur();
-    } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
+    } else if (e.key === 'Enter') {
+      // Enter turns the filter into a search of all subfolders.
+      e.preventDefault();
+      if (pane.filter.trim() || pane.search) void pane.startSearch();
+      filterInput?.blur();
+      return;
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       filterInput?.blur();
-      if (e.key === 'Enter' && pane.items[0]) pane.select(pane.items[0].location);
-      else pane.moveCursor(0);
+      pane.moveCursor(0);
       return;
     }
     e.stopPropagation();
@@ -66,7 +73,8 @@
       <input
         bind:this={filterInput}
         bind:value={pane.filter}
-        placeholder="Filter"
+        placeholder={pane.search ? 'Search' : 'Filter'}
+        title="Type to filter this folder; press Enter to search all subfolders"
         spellcheck="false"
         aria-label="Filter this folder"
         onkeydown={onFilterKey}
@@ -75,6 +83,10 @@
     <button class="tool" title="New folder ({keysFor('new-folder')})" disabled={!pane.listing?.capabilities.mkdir} onclick={() => app.newFolder(pane)}><Icon name="newfolder" /></button>
     <button class="tool" class:spin={pane.loading} title="Refresh ({keysFor('refresh')})" onclick={() => pane.refresh()}><Icon name="refresh" /></button>
   </header>
+
+  {#if pane.search}
+    <SearchBar {pane} search={pane.search} />
+  {/if}
 
   {#if pane.error}
     <div class="banner" role="alert">
@@ -88,7 +100,12 @@
   <FileList {pane} {tab} {active} />
 
   <footer>
-    {#if pane.listing}
+    {#if pane.search}
+      <span>{plural(pane.items.length, 'result')}</span>
+      {#if pane.selected.length}
+        <span>· {pane.selected.length} selected{selectedBytes ? ` (${bytes(selectedBytes)})` : ''}</span>
+      {/if}
+    {:else if pane.listing}
       <span>{plural(pane.items.length, 'item')}{pane.filter ? ` of ${pane.listing.items.length}` : ''}</span>
       {#if pane.selected.length}
         <span>· {pane.selected.length} selected{selectedBytes ? ` (${bytes(selectedBytes)})` : ''}</span>

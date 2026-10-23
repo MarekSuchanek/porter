@@ -1,3 +1,4 @@
+mod find;
 mod format;
 mod progress;
 mod remote;
@@ -76,6 +77,8 @@ enum Command {
         #[arg(short = 'R', long)]
         recursive: bool,
     },
+    /// Search recursively by name, pattern, type, size or date
+    Find(find::FindArgs),
     /// Manage saved remotes (SFTP, S3, FTP)
     Remote {
         #[command(subcommand)]
@@ -197,6 +200,7 @@ async fn run(cli: Cli) -> Result<()> {
             locations,
             recursive,
         } => chmod(&mode, &locations, recursive).await,
+        Command::Find(args) => find::run(args, registry()).await,
         Command::Remote { command } => remote::run(command, registry()).await,
     }
 }

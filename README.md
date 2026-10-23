@@ -24,6 +24,11 @@ porter mv old.txt new.txt                      # rename, or copy + delete across
 porter rm -rn build                            # dry run: show what would be deleted
 porter mkdir -p a/b/c
 porter chmod -R go-w,a+rX shared               # octal (755) or symbolic modes
+
+porter find ~/Documents -n '*.pdf' --newer 30d # name glob, modified in the last 30 days
+porter find . -n report -t f                   # text in the name, files only
+porter find nas:/media --size +1G -l           # works on remotes too
+porter find src -e '\.rs$' --full-path --json # regex on the relative path, JSON lines
 ```
 
 Existing destination files are an error by default; pick a policy with
@@ -61,7 +66,9 @@ npm run dev            # UI only, in a browser, against an in-memory mock backen
 
 Tabs, an optional dual-pane view (⌘\\), sidebar with places, disks and saved remotes,
 an inspector with a permissions editor, and a transfer drawer with live progress.
-Press ⌘K (Ctrl+K) for every command and its shortcut. Drag files between panes or
+Type in a pane's filter box to filter the folder; press Enter to search all
+subfolders (with type, size and date filters). Press ⌘K (Ctrl+K) for every command
+and its shortcut. Drag files between panes or
 onto folders to copy them; hold Shift to move.
 
 ## Layout

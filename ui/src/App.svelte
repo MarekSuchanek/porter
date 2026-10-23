@@ -101,7 +101,8 @@
       const delta = moves[e.key];
       pane.moveCursor(Number.isFinite(delta) ? delta : delta * pane.items.length, e.shiftKey);
     } else if (e.key === 'Escape') {
-      if (pane.filter) pane.filter = '';
+      if (pane.search) pane.exitSearch();
+      else if (pane.filter) pane.filter = '';
       else pane.selection.clear();
     } else if (e.key.length === 1 && e.key !== ' ' && !mod && !e.altKey && !e.ctrlKey) {
       // Type to filter.
