@@ -1,0 +1,189 @@
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --sidebar: #eceef2;
+  --raised: #ffffff;
+  --border: #e1e4ea;
+  --border-strong: #cfd4dc;
+  --text: #1c2130;
+  --muted: #677084;
+  --faint: #9aa1b0;
+  --accent: #4b63f5;
+  --accent-text: #ffffff;
+  --accent-weak: #e7ebff;
+  --select: #dce3ff;
+  --select-focus: #4b63f5;
+  --hover: #eef0f5;
+  --danger: #dd3b44;
+  --danger-weak: #fde8e9;
+  --ok: #24936a;
+  --warn: #c27c0e;
+  --folder: #5b8def;
+  --image: #1a9c95;
+  --archive: #d6802a;
+  --code: #8b5cf6;
+  --media: #e2557a;
+  --shadow: 0 10px 34px rgba(16, 22, 40, 0.18), 0 2px 6px rgba(16, 22, 40, 0.08);
+  --radius: 8px;
+  --row: 28px;
+  color-scheme: light;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191f;
+    --panel: #1d2027;
+    --sidebar: #15171c;
+    --raised: #262a33;
+    --border: #2c303a;
+    --border-strong: #3a3f4b;
+    --text: #e6e8ee;
+    --muted: #9aa1b2;
+    --faint: #6b7283;
+    --accent: #6f86ff;
+    --accent-weak: #262d52;
+    --select: #2d3766;
+    --select-focus: #6f86ff;
+    --hover: #252933;
+    --danger: #f2616a;
+    --danger-weak: #3a2024;
+    --ok: #3cc28f;
+    --warn: #e5a23a;
+    --folder: #77a2ff;
+    --shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* Small square toolbar button. */
+.tool {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+.tool:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.tool:disabled {
+  opacity: 0.35;
+}
+.tool.on {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+/* Push buttons in dialogs and panels. */
+.btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--raised);
+  font-weight: 500;
+}
+.btn:hover {
+  background: var(--hover);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.btn.primary:hover {
+  filter: brightness(1.07);
+}
+.btn.danger {
+  color: var(--danger);
+}
+.btn.danger.primary {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.btn:focus-visible,
+.tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  outline: none;
+  min-width: 0;
+}
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+kbd {
+  font: 11px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  color: var(--muted);
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}

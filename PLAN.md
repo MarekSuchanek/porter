@@ -37,7 +37,7 @@ porter/
 │  ├─ porter-backends/  # local now; opendal-backed, smb, nfs later; provider registry
 │  ├─ porter-jobs/      # job engine: copy/move/delete/chmod with progress + cancellation
 │  ├─ porter-cli/       # `porter` binary
-│  └─ porter-gui/       # (M4) Tauri app: src-tauri + Svelte UI
+│  └─ porter-gui/       # Tauri app (Rust side); the Svelte UI lives in ui/
 ```
 
 ### Core concepts
@@ -124,7 +124,13 @@ porter remote list|remove|test
    copy + delete; write-if-absent is check-then-write (racy); error texts from servers
    are passed through verbatim; WebDAV and other OpenDAL services are not wired up.
 4. **M4 GUI v1** — Tauri + Svelte app: browser with tabs, sidebar, inspector,
-   transfer drawer, dual-pane toggle.
+   transfer drawer, dual-pane toggle. ✅ Also: ⌘K palette, context menus, drag & drop
+   (Shift moves), conflict dialog (Skip / Replace / Keep both), rename, new folder,
+   permissions editor, type-to-filter, session restore, light/dark. In a plain browser
+   the UI runs on an in-memory mock backend (`ui/src/lib/mock.ts`) for development.
+   Follow-ups: drops from/to Finder/Explorer, trash instead of delete, folder sizes,
+   thumbnails/Quick Look, editing remotes in the GUI, keyboard customization,
+   Windows/Linux packaging checks.
 5. **M5 Search** — `find` with name/glob/regex/size/date/type filters; streaming
    results in CLI and GUI; parallel local walk.
 6. **M6 Remotes II** — SMB and NFS providers.

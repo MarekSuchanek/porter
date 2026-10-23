@@ -246,8 +246,10 @@ async fn execute(job: &Job, plan: &Plan, opts: &CopyOptions, report: &mut Report
         }
     }
 
-    let outcomes: Vec<_> = stream::iter(&plan.files)
-        .map(|item| copy_file(job, item, opts))
+    // Indices rather than `&Item`s: a closure over borrowed items defeats the `Send`
+    // proof callers need to spawn the job (rust-lang/rust#102211).
+    let outcomes: Vec<_> = stream::iter(0..plan.files.len())
+        .map(|i| copy_file(job, &plan.files[i], opts))
         .buffer_unordered(opts.concurrency.max(1))
         .collect()
         .await;

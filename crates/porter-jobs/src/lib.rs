@@ -45,3 +45,21 @@ pub async fn mkdir(target: &Target, parents: bool) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_send<T: Send>(_: T) {}
+
+    /// Front ends spawn these on a multi-threaded runtime; this only has to compile.
+    #[allow(dead_code)]
+    fn futures_are_send(job: &Job, targets: &[Target], spec: &porter_core::ModeSpec) {
+        let opts = CopyOptions::default();
+        assert_send(copy(job, targets, &targets[0], &opts));
+        assert_send(move_to(job, targets, &targets[0], &opts));
+        assert_send(delete(job, targets, &DeleteOptions::default()));
+        assert_send(chmod(job, targets, spec, true));
+        assert_send(mkdir(&targets[0], true));
+    }
+}

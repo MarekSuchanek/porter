@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# The GUI needs the built frontend (ui/dist); build it with `npm run tauri build`.
+default-members = ["crates/porter-core", "crates/porter-backends", "crates/porter-jobs", "crates/porter-cli"]
 
 [workspace.package]
 version = "0.1.0"

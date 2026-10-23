@@ -50,6 +50,20 @@ Ad-hoc URLs work too: `sftp://me@host:2222/path`, `ftp://host/path`, `s3://bucke
 Profiles are stored in `config.toml` in the OS config directory (override with
 `PORTER_CONFIG_DIR`); passwords and secret keys only ever go to the OS keychain.
 
+## Desktop app
+
+```bash
+npm install
+npm run tauri dev      # run the app (Vite dev server + Tauri window)
+npm run tauri build    # installer for this OS in target/release/bundle
+npm run dev            # UI only, in a browser, against an in-memory mock backend
+```
+
+Tabs, an optional dual-pane view (⌘\\), sidebar with places, disks and saved remotes,
+an inspector with a permissions editor, and a transfer drawer with live progress.
+Press ⌘K (Ctrl+K) for every command and its shortcut. Drag files between panes or
+onto folders to copy them; hold Shift to move.
+
 ## Layout
 
 | Crate | Purpose |
@@ -58,3 +72,4 @@ Profiles are stored in `config.toml` in the OS config directory (override with
 | `porter-backends` | Local and OpenDAL (SFTP, S3, FTP) providers, remote config, keychain secrets, `Registry` |
 | `porter-jobs` | Copy, move, delete, chmod, mkdir with progress, cancellation and conflict policies |
 | `porter-cli` | The `porter` binary |
+| `porter-gui` | Tauri desktop app: commands and job events for the UI in `ui/` |
