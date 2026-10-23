@@ -79,6 +79,37 @@ pub enum Backend {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         tls: bool,
     },
+    /// Windows / Samba share (SMB 2 and 3). Without a stored password, signs in as guest.
+    Smb {
+        host: String,
+        share: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// `user` or `DOMAIN\user`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
+    },
+    /// NFSv3 export, authenticated by uid/gid (AUTH_SYS) like a mount would be.
+    Nfs {
+        host: String,
+        /// Exported path on the server, e.g. `/srv/share`.
+        export: String,
+        /// NFS port; without it, ports come from the server's portmapper (111).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// MOUNT service port, when it differs from `port`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mount_port: Option<u16>,
+        /// Defaults to the current user's ids.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        uid: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gid: Option<u32>,
+        /// Connect from a port below 1024, which servers exporting with `secure`
+        /// require; needs root.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        privileged_port: bool,
+    },
 }
 
 /// How to treat SSH host keys missing from `known_hosts`.
@@ -100,15 +131,17 @@ impl Backend {
             Self::Sftp { .. } => "sftp",
             Self::S3 { .. } => "s3",
             Self::Ftp { .. } => "ftp",
+            Self::Smb { .. } => "smb",
+            Self::Nfs { .. } => "nfs",
         }
     }
 
     /// What the secret stored for this backend is, if it uses one.
     pub fn secret_label(&self) -> Option<&'static str> {
         match self {
-            Self::Sftp { .. } => None,
+            Self::Sftp { .. } | Self::Nfs { .. } => None,
             Self::S3 { .. } => Some("secret access key"),
-            Self::Ftp { .. } => Some("password"),
+            Self::Ftp { .. } | Self::Smb { .. } => Some("password"),
         }
     }
 
@@ -132,6 +165,15 @@ impl Backend {
                 let scheme = if *tls { "ftps" } else { "ftp" };
                 format!("{scheme}://{}", host_port(host, port, user))
             }
+            Self::Smb {
+                host,
+                share,
+                port,
+                user,
+            } => format!("smb://{}/{share}", host_port(host, port, user)),
+            Self::Nfs {
+                host, export, port, ..
+            } => format!("nfs://{}{export}", host_port(host, port, &None)),
             Self::S3 {
                 bucket, endpoint, ..
             } => match endpoint {
@@ -228,6 +270,33 @@ mod tests {
             },
         );
         config.remotes.insert(
+            "office".into(),
+            Remote {
+                backend: Backend::Smb {
+                    host: "fileserver".into(),
+                    share: "Projects".into(),
+                    port: None,
+                    user: Some(r"CORP\me".into()),
+                },
+                root: None,
+            },
+        );
+        config.remotes.insert(
+            "lab".into(),
+            Remote {
+                backend: Backend::Nfs {
+                    host: "10.0.0.5".into(),
+                    export: "/srv/data".into(),
+                    port: Some(2049),
+                    mount_port: None,
+                    uid: Some(1000),
+                    gid: None,
+                    privileged_port: false,
+                },
+                root: None,
+            },
+        );
+        config.remotes.insert(
             "ftp1".into(),
             Remote {
                 backend: Backend::Ftp {
@@ -285,6 +354,14 @@ mod tests {
         assert_eq!(
             config.remotes["ftp1"].backend.address(),
             "ftps://ftp.example.com"
+        );
+        assert_eq!(
+            config.remotes["office"].backend.address(),
+            r"smb://CORP\me@fileserver/Projects"
+        );
+        assert_eq!(
+            config.remotes["lab"].backend.address(),
+            "nfs://10.0.0.5:2049/srv/data"
         );
     }
 }

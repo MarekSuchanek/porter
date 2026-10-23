@@ -97,6 +97,11 @@ pub trait Provider: Send + Sync {
     /// Information about the file system holding `path`.
     async fn fs_info(&self, path: &str) -> Result<FsInfo>;
 
+    /// Verifies that the backend is reachable and the credentials work.
+    async fn check(&self) -> Result<()> {
+        self.list("/").await.map(|_| ())
+    }
+
     /// Every entry below `path` (not `path` itself), in no particular order, if the
     /// backend has a faster way than listing directory by directory (the local file
     /// system walks in parallel). `None` means callers should walk with [`list`](Self::list).

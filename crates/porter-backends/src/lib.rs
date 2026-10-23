@@ -2,8 +2,11 @@
 
 pub mod config;
 pub mod local;
+pub mod nfs;
+mod pipe;
 pub mod remote;
 pub mod secrets;
+pub mod smb;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -12,8 +15,10 @@ use porter_core::{Error, Location, Provider, Result, Target};
 
 pub use config::{Backend, Config, Remote};
 pub use local::LocalProvider;
+pub use nfs::{NfsOptions, NfsProvider};
 pub use remote::OpendalProvider;
 pub use secrets::{Keychain, MemorySecrets, SecretStore};
+pub use smb::SmbProvider;
 
 /// Resolves locations to providers using the saved remotes. Providers are cached per
 /// backend, so operations on many paths of one server share a connection.
@@ -56,7 +61,7 @@ impl Registry {
             return Ok(provider.clone());
         }
         let provider: Arc<dyn Provider> = match location.is_remote_alias() {
-            true => Arc::new(self.remote_provider(&location.authority)?),
+            true => self.remote_provider(&location.authority)?,
             false => Arc::new(OpendalProvider::from_url(location)?),
         };
         self.cache.lock().unwrap().insert(key, provider.clone());
@@ -64,7 +69,7 @@ impl Registry {
     }
 
     /// A fresh provider for the saved remote `name`.
-    pub fn remote_provider(&self, name: &str) -> Result<OpendalProvider> {
+    pub fn remote_provider(&self, name: &str) -> Result<Arc<dyn Provider>> {
         let remote = self.config.remotes.get(name).ok_or_else(|| {
             Error::invalid_location(
                 format!("{name}:"),
@@ -72,10 +77,57 @@ impl Registry {
             )
         })?;
         let secret = match remote.backend.secret_label() {
-            Some(_) => self.secrets.get(name)?,
+            Some(_) => match std::env::var(secret_env_var(name)) {
+                Ok(secret) => Some(secret),
+                Err(_) => self.secrets.get(name)?,
+            },
             None => None,
         };
-        OpendalProvider::from_remote(name, remote, secret.as_deref())
+        let label = format!("{name}:");
+        Ok(match &remote.backend {
+            Backend::Smb {
+                host,
+                share,
+                port,
+                user,
+            } => Arc::new(SmbProvider::new(
+                name,
+                label,
+                host,
+                share,
+                *port,
+                user.as_deref(),
+                secret.as_deref(),
+                remote.root.as_deref(),
+            )),
+            Backend::Nfs {
+                host,
+                export,
+                port,
+                mount_port,
+                uid,
+                gid,
+                privileged_port,
+            } => Arc::new(NfsProvider::new(
+                name,
+                label,
+                NfsOptions {
+                    host: host.clone(),
+                    export: export.clone(),
+                    port: *port,
+                    mount_port: *mount_port,
+                    uid: *uid,
+                    gid: *gid,
+                    privileged_port: *privileged_port,
+                    root: remote.root.clone(),
+                },
+            )),
+            _ => Arc::new(OpendalProvider::from_remote(
+                name,
+                remote,
+                secret.as_deref(),
+            )?),
+        })
     }
 
     /// Parses user input into a [`Target`]; local paths are made absolute.
@@ -97,6 +149,15 @@ impl Default for Registry {
     }
 }
 
+/// Environment variable that overrides a remote's stored secret, e.g.
+/// `PORTER_SECRET_MY_NAS` for `my-nas` (for scripts, CI and machines without a keychain).
+pub fn secret_env_var(remote: &str) -> String {
+    format!(
+        "PORTER_SECRET_{}",
+        remote.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
 /// [`Registry::target`] without saved remotes.
 pub fn target(input: &str) -> Result<Target> {
     Registry::default().target(input)
@@ -105,6 +166,12 @@ pub fn target(input: &str) -> Result<Target> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn secret_env_var_names() {
+        assert_eq!(secret_env_var("office"), "PORTER_SECRET_OFFICE");
+        assert_eq!(secret_env_var("my-nas_2"), "PORTER_SECRET_MY_NAS_2");
+    }
 
     #[test]
     fn resolves_and_caches_remotes() {

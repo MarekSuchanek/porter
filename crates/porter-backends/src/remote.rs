@@ -113,6 +113,9 @@ impl OpendalProvider {
                 }
                 Operator::new(builder)
             }
+            Backend::Smb { .. } | Backend::Nfs { .. } => {
+                return Err(Error::backend(name, "not an OpenDAL backend"));
+            }
         }
         .map_err(|e| match e.kind() {
             ErrorKind::ConfigInvalid if e.to_string().contains("region is missing") => {
@@ -165,6 +168,15 @@ impl OpendalProvider {
                 access_key_id: None,
                 virtual_host_style: false,
             },
+            "smb" | "nfs" => {
+                return Err(Error::invalid_location(
+                    location.to_string(),
+                    format!(
+                        "save the share first with `porter remote add {}` and use NAME:/path",
+                        location.scheme
+                    ),
+                ));
+            }
             other => {
                 return Err(Error::invalid_location(
                     location.to_string(),
@@ -180,14 +192,6 @@ impl OpendalProvider {
         provider.scheme = location.scheme.clone();
         provider.label = format!("{}://{}", location.scheme, location.authority);
         Ok(provider)
-    }
-
-    /// Verifies that the backend is reachable and the credentials work.
-    pub async fn check(&self) -> Result<()> {
-        self.op
-            .check()
-            .await
-            .map_err(|e| Error::backend(&self.name, e))
     }
 
     /// `path` as the user addresses it, for error messages.
@@ -272,6 +276,13 @@ impl Provider for OpendalProvider {
                 std::future::ready(item)
             })
             .boxed())
+    }
+
+    async fn check(&self) -> Result<()> {
+        self.op
+            .check()
+            .await
+            .map_err(|e| Error::backend(&self.name, e))
     }
 
     async fn fs_info(&self, _path: &str) -> Result<FsInfo> {

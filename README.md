@@ -43,6 +43,8 @@ porter remote add s3 backup --bucket my-backups                        # AWS cre
 porter remote add s3 minio --bucket photos --endpoint http://localhost:9000 \
     --access-key-id KEY --ask-secret                                    # secret → OS keychain
 porter remote add ftp files --host ftp.example.com --user me --tls --ask-secret
+porter remote add smb office --host fileserver --share Projects --user 'CORP\me' --ask-secret
+porter remote add nfs lab --host 10.0.0.5 --export /srv/data   # uses your uid/gid
 porter remote list
 porter remote test nas
 
@@ -52,6 +54,8 @@ porter mv nas:/inbox/report.pdf nas:/archive/
 ```
 
 Ad-hoc URLs work too: `sftp://me@host:2222/path`, `ftp://host/path`, `s3://bucket/key`.
+For scripts and CI, `PORTER_SECRET_<NAME>` (e.g. `PORTER_SECRET_OFFICE`) overrides the
+stored secret. NFS exports must allow unprivileged client ports (`insecure`).
 Profiles are stored in `config.toml` in the OS config directory (override with
 `PORTER_CONFIG_DIR`); passwords and secret keys only ever go to the OS keychain.
 
@@ -76,7 +80,7 @@ onto folders to copy them; hold Shift to move.
 | Crate | Purpose |
 |---|---|
 | `porter-core` | `Provider` trait, `Entry`/`FsInfo`/`Capabilities`, `Location`/`Target`, `ModeSpec`, errors |
-| `porter-backends` | Local and OpenDAL (SFTP, S3, FTP) providers, remote config, keychain secrets, `Registry` |
+| `porter-backends` | Local, OpenDAL (SFTP, S3, FTP), SMB and NFS providers, remote config, keychain secrets, `Registry` |
 | `porter-jobs` | Copy, move, delete, chmod, mkdir with progress, cancellation and conflict policies |
 | `porter-cli` | The `porter` binary |
 | `porter-gui` | Tauri desktop app: commands and job events for the UI in `ui/` |

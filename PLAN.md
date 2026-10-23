@@ -104,7 +104,7 @@ porter chmod MODE LOCATION… [-R]                     # MODE: 755 or u+x,go-w,a
 porter chown OWNER[:GROUP] LOCATION… [-R]                                           # later
 porter find [LOCATION] [-n GLOB|TEXT] [-e RE [--full-path]] [-t f|d|l] [--size +10M] [--size -1G]
             [--newer 7d] [--older 2026-01-01] [-H] [-d DEPTH] [--limit N] [-l|--json] [--show-errors]
-porter remote add sftp|s3|ftp NAME [options] [--ask-secret|--secret-stdin]
+porter remote add sftp|s3|ftp|smb|nfs NAME [options] [--ask-secret|--secret-stdin]
 porter remote list|remove|test
 ```
 
@@ -142,7 +142,17 @@ porter remote list|remove|test
    depending on cache state.
    Follow-ups: content search (grep), an index for instant search, Spotlight /
    Windows Search integration, `.gitignore`-aware mode, saved searches.
-6. **M6 Remotes II** — SMB and NFS providers.
+6. **M6 Remotes II** — SMB and NFS providers. ✅ SMB 2/3 via the pure-Rust `smb`
+   crate (user/password in the keychain, or guest); NFSv3 via `nfs3_client` (AUTH_SYS
+   with your uid/gid, POSIX permissions and times supported). Both connect lazily on
+   first use. Verified live against Samba 4.23 and the Linux kernel NFS server: up/down
+   200 MiB byte-identical, server-side renames, chmod (NFS), times preserved.
+   `PORTER_SECRET_<NAME>` overrides a stored secret (scripts, CI, no keychain).
+   Known limits: SMB guest sessions can read but not write — smb-rs checks writes
+   against the server's "maximal access" reply, which Samba reports without write
+   data for guests; NFS needs an export with `insecure` (or `--privileged-port` as
+   root), NFSv3 only (no NFSv4, no Kerberos); ad-hoc `smb://`/`nfs://` URLs aren't
+   supported (save a remote); SMB permissions (ACLs) aren't exposed.
 7. **M7 Polish & release** — installers (dmg, msi, AppImage/deb), auto-update,
    signing/notarization, docs.
 

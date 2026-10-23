@@ -13,9 +13,12 @@ dunce = "1"
 futures = "0.3"
 jwalk = "0.9"
 keyring = "4.2"
+nfs3_client = { version = "0.9", features = ["tokio"] }
 opendal = { version = "0.59", features = ["services-s3", "services-sftp", "services-ftp", "services-memory"] }
 porter-core.workspace = true
 serde = { version = "1", features = ["derive"] }
+smb = "0.12"
+smb-dtyp = "0.12"
 sysinfo = { version = "0.37", default-features = false, features = ["disk"] }
 tokio = { version = "1", features = ["fs", "rt", "sync"] }
 tokio-util = { version = "0.7", features = ["compat"] }
@@ -24,3 +27,6 @@ toml = "1"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["io-util", "macros", "rt-multi-thread"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

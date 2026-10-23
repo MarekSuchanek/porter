@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use porter_backends::config::KnownHosts;
 use porter_backends::{Backend, Config, OpendalProvider, Registry, Remote};
-use porter_core::{Location, Provider};
+use porter_core::Location;
 
 #[derive(Subcommand)]
 pub enum RemoteCommand {
@@ -69,6 +69,46 @@ pub enum AddKind {
         virtual_host_style: bool,
         #[command(flatten)]
         secret: SecretArgs,
+    },
+    /// Windows or Samba share (SMB 2/3); signs in as guest without --ask-secret
+    Smb {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        host: String,
+        /// Share name, e.g. Public
+        #[arg(long)]
+        share: String,
+        #[arg(long)]
+        port: Option<u16>,
+        /// user or DOMAIN\user
+        #[arg(long)]
+        user: Option<String>,
+        #[command(flatten)]
+        secret: SecretArgs,
+    },
+    /// NFSv3 export (AUTH_SYS: your uid/gid unless given)
+    Nfs {
+        #[command(flatten)]
+        common: Common,
+        #[arg(long)]
+        host: String,
+        /// Exported path, e.g. /srv/share
+        #[arg(long)]
+        export: String,
+        /// NFS port; omit to ask the server's portmapper
+        #[arg(long)]
+        port: Option<u16>,
+        /// MOUNT port, if different from --port
+        #[arg(long)]
+        mount_port: Option<u16>,
+        #[arg(long)]
+        uid: Option<u32>,
+        #[arg(long)]
+        gid: Option<u32>,
+        /// Connect from a port below 1024 (servers exporting with `secure`; needs root)
+        #[arg(long)]
+        privileged_port: bool,
     },
     /// FTP or FTPS server
     Ftp {
@@ -210,6 +250,43 @@ async fn add(kind: AddKind, registry: &Registry) -> Result<()> {
             };
             (common, backend, Some(secret))
         }
+        AddKind::Smb {
+            common,
+            host,
+            share,
+            port,
+            user,
+            secret,
+        } => {
+            let backend = Backend::Smb {
+                host,
+                share,
+                port,
+                user,
+            };
+            (common, backend, Some(secret))
+        }
+        AddKind::Nfs {
+            common,
+            host,
+            export,
+            port,
+            mount_port,
+            uid,
+            gid,
+            privileged_port,
+        } => {
+            let backend = Backend::Nfs {
+                host,
+                export,
+                port,
+                mount_port,
+                uid,
+                gid,
+                privileged_port,
+            };
+            (common, backend, None)
+        }
     };
 
     let name = common.name;
@@ -330,6 +407,8 @@ async fn test(name: &str, registry: &Registry) -> Result<()> {
         ("delete", caps.delete),
         ("rename", caps.rename),
         ("mkdir", caps.mkdir),
+        ("permissions", caps.set_permissions),
+        ("times", caps.set_modified),
         ("server-side copy", caps.server_side_copy),
     ]
     .into_iter()
