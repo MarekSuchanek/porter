@@ -27,17 +27,27 @@ jobs:
           fi
 
       - id: create
-        name: Create draft release with notes from CHANGELOG.md
+        name: Create (or reuse) the draft release with notes from CHANGELOG.md
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           awk -v v="$version" '/^## /{ p = index($0, "[" v "]") > 0; next } p' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "Porter $GITHUB_REF_NAME" > notes.md
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-            --title "Porter $GITHUB_REF_NAME" --notes-file notes.md
+          # Re-running for the same tag reuses its draft instead of failing.
           id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft) | .id" | head -1)
+          if [ -z "$id" ]; then
+            # Take the id from the create call itself; listing right after can lag.
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$GITHUB_REF_NAME" -f name="Porter $GITHUB_REF_NAME" \
+              -f body="$(cat notes.md)" -F draft=true --jq .id)
+          fi
+          if [ -z "$id" ]; then
+            echo "::error::Could not create or find the draft release"
+            exit 1
+          fi
+          echo "Draft release id: $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   app:
