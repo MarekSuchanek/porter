@@ -5,7 +5,7 @@ as the release notes; the first line of it is shown in the in-app update prompt.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-23
+## [0.1.0] - 2026-10-24
 
 First release: a desktop app and a `porter` CLI for local and remote file systems.
 
